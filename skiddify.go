@@ -3,8 +3,6 @@ package main
 import (
 	"image/color"
 
-	"github.com/MrBreadcrumbs/skiddify/panels/scanpage"
-
 	"fyne.io/fyne"
 	"fyne.io/fyne/app"
 	"fyne.io/fyne/canvas"
