@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"image/color"
+	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"fyne.io/fyne"
 	"fyne.io/fyne/app"
@@ -16,6 +18,7 @@ import (
 /* set global vars (mostly for formatting) */
 var line = canvas.NewLine(color.Black)
 var space = layout.NewSpacer()
+var cancelCounter = 0
 
 func main() {
 	/* initialize window and set size */
@@ -43,10 +46,17 @@ func scanner(window fyne.Window) fyne.CanvasObject {
 	/* port scanner */
 	net := widget.NewLabel("Network Enumeration")
 
+	/* build entrypoints for ip & range */
 	ipEntry := widget.NewEntry()
 	ipEntry.SetPlaceHolder("{Enter IP here}")
 	portEntry := widget.NewEntry()
 	portEntry.SetPlaceHolder("{Enter Port Range ie: 139-445}")
+
+	/* build form and tie to entry points
+	   introduces cancelCounter, when tapped sets
+	   global variable to 1, include break statement
+	   in long running functions to allow cancels
+	   (see portScanner func) */
 
 	ipForm := &widget.Form{
 		Items: []*widget.FormItem{
@@ -56,15 +66,18 @@ func scanner(window fyne.Window) fyne.CanvasObject {
 			ip := ipEntry.Text
 			port := portEntry.Text
 			fmt.Println("scan button tapped!")
-			portScan(ip, port, window)
+			go portScan(ip, port, window)
 		},
 		SubmitText: "Scan",
+		OnCancel: func() {
+			cancelCounter = 1
+		},
+		CancelText: "Cancel",
 	}
 
+	/* builds layout, first vertical box for forms then the whole page as horizontal box */
 	netCol := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), net, ipForm, space, space)
-
 	scanPage := fyne.NewContainerWithLayout(layout.NewHBoxLayout(), line, netCol, space)
-
 	return scanPage
 }
 
@@ -92,11 +105,12 @@ func shell() fyne.CanvasObject {
 	return fyne.NewContainerWithLayout(layout.NewCenterLayout(), tester)
 }
 
+/* scan target ports, output to file & render to screen */
 func portScan(ip string, port string, window fyne.Window) {
 	addr := strings.Split(ip, ".")
 	ports := strings.Split(port, "-")
 
-	//check valid ip / port combo
+	/* check valid ip / port combo */
 	if len(addr) < 4 {
 		errorPop(window, "IP address.")
 		fmt.Println("invalid IP address.")
@@ -118,8 +132,62 @@ func portScan(ip string, port string, window fyne.Window) {
 		}
 	}
 
+	/* handles single port provision */
+	if strings.Contains(port, "-") == false {
+		fmt.Println("no space found!")
+		fmt.Println("scanning port: ", port)
+		singleConn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, port), 500*time.Millisecond)
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			fmt.Println("Port: ", port, "open")
+			singleConn.Close()
+		}
+
+		/* handle port ranges */
+	} else if strings.Contains(port, "-") == true {
+		fmt.Println("Range identified, pulling...")
+		p1, _ := strconv.Atoi(ports[0])
+		p2, _ := strconv.Atoi(ports[1])
+		if p1 < p2 {
+			diff := p2 - p1
+			for m := 0; m <= diff; m++ {
+				//cancelCounter break statement
+				if cancelCounter == 1 {
+					cancelCounter = 0
+					break
+				}
+				currPort := strconv.Itoa(p1 + m)
+				conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, currPort), 500*time.Millisecond)
+				if err != nil {
+					fmt.Println("Port: ", currPort, "closed")
+				} else {
+					fmt.Println("Port:", currPort, "open")
+					conn.Close()
+				}
+			}
+		} else if p2 < p1 {
+			diff := p1 - p2
+			for m := 0; m <= diff; m++ {
+				//cancelCounter break statement
+				if cancelCounter == 1 {
+					cancelCounter = 0
+					break
+				}
+				currPort := strconv.Itoa(p2 + m)
+				conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, currPort), 500*time.Millisecond)
+				if err != nil {
+					fmt.Println("Port: ", currPort, "closed")
+				} else {
+					fmt.Println("Port: ", currPort, "open")
+					conn.Close()
+				}
+			}
+		}
+	}
 }
 
+/* handle error messages, create popup with recommendation to remediate */
 func errorPop(window fyne.Window, message string) {
 	errMsg := "Error! Check " + message
 	test := canvas.NewText(errMsg, color.Black)
