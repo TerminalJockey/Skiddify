@@ -17,3 +17,19 @@ Longshot Goals:
 3. Modular exploits/post
 4. ...
 5. Profit?
+
+# Dependencies
+___
+fyne:
+go get fyne.io/fyne
+
+you may need gcc to build this from source:
+http://mingw-w64.org/doku.php
+
+fyne documentation:
+https://github.com/fyne-io/fyne
+
+# Testing
+___
+Currently tested on:
+Windows 10
