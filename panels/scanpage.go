@@ -16,8 +16,8 @@ import (
 //Scan returns the scan window back to main app
 func Scan(window fyne.Window) fyne.CanvasObject {
 
-	line := canvas.NewLine(color.Black)
-	line1 := canvas.NewLine(color.Black)
+	tDiv := canvas.NewLine(color.Black)
+	bDiv := canvas.NewLine(color.Black)
 
 	//make labels for funcitonality
 	pScannerLabel := widget.NewLabel("Port Scanner")
@@ -63,7 +63,7 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 	//wordlist selection
 
 	wlButton := widget.NewButton("Select Wordlist", func() {
-		fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+		wfd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if err == nil && reader == nil {
 				return
 			}
@@ -71,12 +71,11 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 				dialog.ShowError(err, window)
 				return
 			}
-			try := strings.Split(fmt.Sprintf("%s", reader), " ")
-			path := strings.TrimSuffix(try[len(try)-1], "}")
-			fmt.Println(path)
+			wPath := getPath(reader)
+			fmt.Println(wPath)
 		}, window)
-		fd.SetFilter(storage.NewExtensionFileFilter([]string{".txt"}))
-		fd.Show()
+		wfd.SetFilter(storage.NewExtensionFileFilter([]string{".txt"}))
+		wfd.Show()
 	})
 
 	//build dirscan entry forms
@@ -99,14 +98,142 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 	//assemble dirscan vertical box
 	vDScanBox := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), dScannerLabel, wlButton, dScanForm)
 	//assemble dirscan horizontal box
-	hDScanBox := fyne.NewContainerWithLayout(layout.NewHBoxLayout(), line, vDScanBox)
+	hDScanBox := fyne.NewContainerWithLayout(layout.NewHBoxLayout(), vDScanBox)
+
+	//bruteforcer
+	bForceIPEntry := widget.NewEntry()
+	bForceIPEntry.SetPlaceHolder("Target IP")
+	bForcePortEntry := widget.NewEntry()
+	bForcePortEntry.SetPlaceHolder("Port")
+
+	//ip/port submission form
+
+	bForceForm := &widget.Form{
+		Items: []*widget.FormItem{
+			{"Target IP: ", bForceIPEntry},
+			{"Target Port: ", bForcePortEntry}},
+		OnSubmit: func() {
+			bForceIP := bForceIPEntry.Text
+			bForcePort := bForceIPEntry.Text
+			fmt.Printf("bruteforce started with options: ip: %s port: %s \n", bForceIP, bForcePort)
+		},
+		SubmitText: "BruteForce",
+		OnCancel: func() {
+			fmt.Println("bruteforce cancelled")
+		},
+		CancelText: "Cancel",
+	}
+
+	//user list
+	uList := widget.NewButton("Select Userlist", func() {
+		ufd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if err == nil && reader == nil {
+				return
+			}
+			if err != nil {
+				dialog.ShowError(err, window)
+				return
+			}
+			uPath := getPath(reader)
+			fmt.Println("upath", uPath)
+		}, window)
+		ufd.SetFilter(storage.NewExtensionFileFilter([]string{".txt"}))
+		ufd.Show()
+	})
+
+	//pass list
+	pList := widget.NewButton("Select PassList", func() {
+		pfd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if err == nil && reader == nil {
+				return
+			}
+			if err != nil {
+				dialog.ShowError(err, window)
+				return
+			}
+			pPath := getPath(reader)
+			fmt.Println(pPath)
+		}, window)
+		pfd.SetFilter(storage.NewExtensionFileFilter([]string{".txt"}))
+		pfd.Show()
+	})
+
+	//setup lefthand side of
+	LLPanelbForceBox := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), bForceForm)
+	LRPanelbForceBox := fyne.NewContainerWithLayout(layout.NewFixedGridLayout(fyne.NewSize(120, 40)), layout.NewSpacer(), uList, pList)
+
+	bForceBox := fyne.NewContainerWithLayout(layout.NewHBoxLayout(), LLPanelbForceBox, layout.NewSpacer(), LRPanelbForceBox, layout.NewSpacer())
+
+	//bForce Service selection panel
+
+	bForceSelectionLabel := widget.NewLabel("Select Service")
+
+
+	//create service buttons
+	smbButton := widget.NewButton("SMB", func() {
+		fmt.Println("smb tapped!")
+	})
+
+	ftpButton := widget.NewButton("FTP", func() {
+		fmt.Println("ftp tapped")
+	})
+
+	sshButton := widget.NewButton("SSH", func() {
+		fmt.Println("ssh tapped")
+	})
+
+	sftpButton := widget.NewButton("SFTP", func() {
+		fmt.Println("sftp tapped")
+	})
+
+	ldapButton := widget.NewButton("LDAP", func() {
+		fmt.Println("ldap tapped")
+	})
+
+	smtpButton := widget.NewButton("SMTP", func() {
+		fmt.Println("smtp tapped")
+	})
+
+	mysqlButton := widget.NewButton("MYSQL", func() {
+		fmt.Println("mysql tapped")
+	})
+
+	mssqlButton := widget.NewButton("MSSQL", func() {
+		fmt.Println("mssql tapped")
+	})
+
+	rdpButton := widget.NewButton("RDP", func() {
+		fmt.Println("rdp tapped")
+	})
+
+	//assemble buttons into 3x3 grid, with spacers to keep the grid from the side of the window
+	bForceSelectionGrid := fyne.NewContainerWithLayout(layout.NewGridLayout(4), smbButton, ftpButton, rdpButton, layout.NewSpacer(),
+		sshButton, sftpButton, ldapButton, layout.NewSpacer(), smtpButton, mysqlButton, mssqlButton, layout.NewSpacer())
+
+	//assemble bruteforce selection panel
+	bForceSelectionPanel := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), bForceSelectionLabel, bForceSelectionGrid)
 
 	//assemble top horizontal area (port scanner and dir scanner)
 	topH := fyne.NewContainerWithLayout(layout.NewGridLayout(2), hPScanBox, hDScanBox)
 
-	topV := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), topH, line1)
-	page := fyne.NewContainerWithLayout(layout.NewGridLayout(1), topV, bruteForceLabel, layout.NewSpacer(), resultsLabel)
+	//assemble mid horizontal area (bruteforce entry form, userlist/passlist select, and service selection grid)
+	midH := fyne.NewContainerWithLayout(layout.NewGridLayout(2), bForceBox, bForceSelectionPanel)
+
+	//organize panels
+	topV := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), topH, layout.NewSpacer(), tDiv)
+	midV := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), bruteForceLabel, layout.NewSpacer(), midH, layout.NewSpacer(), bDiv)
+	
+	//create page
+	page := fyne.NewContainerWithLayout(layout.NewGridLayout(1), topV, midV, resultsLabel)
 
 	return page
 
+}
+
+
+//func getPath retrieves the filepath of a target from the fyne.URIReadCloser, allowing us to pull words from wordlists
+func getPath(reader fyne.URIReadCloser) string {
+	raw := strings.Split(fmt.Sprintf("%s", reader), " ")
+	path := strings.TrimSuffix(raw[len(raw)-1], "}")
+	return path
 }
