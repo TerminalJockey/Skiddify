@@ -3,6 +3,8 @@ package panels
 import (
 	"fmt"
 	"image/color"
+	"io/ioutil"
+	"log"
 	"strings"
 
 	"fyne.io/fyne"
@@ -11,6 +13,8 @@ import (
 	"fyne.io/fyne/layout"
 	"fyne.io/fyne/storage"
 	"fyne.io/fyne/widget"
+
+	"github.com/TerminalJockey/Skiddify/0.2/tools"
 )
 
 //Scan returns the scan window back to main app
@@ -23,13 +27,12 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 	pScannerLabel := widget.NewLabel("Port Scanner")
 	dScannerLabel := widget.NewLabel("Directory Scanner")
 	bruteForceLabel := widget.NewLabel("Brute Forcer")
-	resultsLabel := widget.NewLabel("Results")
 
 	//portscanbox
 	pScanIPEntry := widget.NewEntry()
-	pScanIPEntry.SetPlaceHolder("{Target IP}")
+	pScanIPEntry.SetPlaceHolder("Target IP")
 	pScanPortEntry := widget.NewEntry()
-	pScanPortEntry.SetPlaceHolder("{Port Range}")
+	pScanPortEntry.SetPlaceHolder("Port Range")
 
 	//build portscan entry forms
 	pScanForm := &widget.Form{
@@ -39,7 +42,8 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 		OnSubmit: func() {
 			pTargIP := pScanIPEntry.Text
 			pTargPorts := pScanPortEntry.Text
-			fmt.Println("scan started:", pTargIP, pTargPorts)
+			ports := tools.PortScan(pTargIP, pTargPorts)
+			fmt.Println(ports)
 		},
 		SubmitText: "Scan",
 		OnCancel: func() {
@@ -106,7 +110,7 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 	bForcePortEntry := widget.NewEntry()
 	bForcePortEntry.SetPlaceHolder("Port")
 
-	//ip/port submission form
+	//ip|port submission form
 
 	bForceForm := &widget.Form{
 		Items: []*widget.FormItem{
@@ -158,7 +162,7 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 		pfd.Show()
 	})
 
-	//setup lefthand side of
+	//setup lefthand side of bruteforce panel
 	LLPanelbForceBox := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), bForceForm)
 	LRPanelbForceBox := fyne.NewContainerWithLayout(layout.NewFixedGridLayout(fyne.NewSize(120, 40)), layout.NewSpacer(), uList, pList)
 
@@ -167,7 +171,6 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 	//bForce Service selection panel
 
 	bForceSelectionLabel := widget.NewLabel("Select Service")
-
 
 	//create service buttons
 	smbButton := widget.NewButton("SMB", func() {
@@ -213,23 +216,66 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 	//assemble bruteforce selection panel
 	bForceSelectionPanel := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), bForceSelectionLabel, bForceSelectionGrid)
 
+	//begin results box
+
+	resultsContent, err := ioutil.ReadFile("<ENTER TARGET DIR HERE>")
+	if err != nil {
+		log.Println(err)
+	}
+
+	//without passing text to a widget.NewMultiLineEntry, scroll box becomes horribly laggy
+	resultsText := widget.NewMultiLineEntry()
+	if string(resultsContent) == "" {
+		resultsText.SetText("No results yet...")
+	} else {
+		resultsText.SetText(string(resultsContent))
+		resultsText.Wrapping = fyne.TextWrapBreak
+	}
+
+	refreshButton := widget.NewButton("Refresh Results", func() {
+		resultsContent, err = ioutil.ReadFile("<ENTER TARGET DIR HERE>")
+		if err != nil {
+			log.Println(err)
+		}
+		resultsText.SetText(string(resultsContent))
+		resultsText.Wrapping = fyne.TextWrapBreak
+		resultsText.Refresh()
+	})
+
+	refreshButton.Resize(fyne.NewSize(120, 40))
+	refreshButton.Refresh()
+
+	resultsScroll := widget.NewVScrollContainer(resultsText)
+	resSize := fyne.NewSize(1200, 220)
+	resultsScroll.SetMinSize(resSize)
+	resultsScroll.Refresh()
+
+	accord := widget.NewAccordionItem("Results", resultsScroll)
+	resultsRender := widget.NewAccordionContainer(accord)
+
+	buttonBar := fyne.NewContainerWithLayout(layout.NewHBoxLayout(), resultsRender, refreshButton)
+
+	resultsBox := fyne.NewContainerWithLayout(layout.NewAdaptiveGridLayout(1), buttonBar)
+
 	//assemble top horizontal area (port scanner and dir scanner)
-	topH := fyne.NewContainerWithLayout(layout.NewGridLayout(2), hPScanBox, hDScanBox)
+	topH := fyne.NewContainerWithLayout(layout.NewAdaptiveGridLayout(2), hPScanBox, hDScanBox)
 
 	//assemble mid horizontal area (bruteforce entry form, userlist/passlist select, and service selection grid)
-	midH := fyne.NewContainerWithLayout(layout.NewGridLayout(2), bForceBox, bForceSelectionPanel)
+	midH := fyne.NewContainerWithLayout(layout.NewAdaptiveGridLayout(2), bForceBox, bForceSelectionPanel)
+
+	//assemble bottom horizontal area (results box)
+	botH := fyne.NewContainerWithLayout(layout.NewHBoxLayout(), resultsBox)
 
 	//organize panels
 	topV := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), topH, layout.NewSpacer(), tDiv)
 	midV := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), bruteForceLabel, layout.NewSpacer(), midH, layout.NewSpacer(), bDiv)
-	
+
 	//create page
-	page := fyne.NewContainerWithLayout(layout.NewGridLayout(1), topV, midV, resultsLabel)
+	page := fyne.NewContainerWithLayout(layout.NewGridLayout(1), topV, midV, botH)
 
 	return page
 
 }
-
 
 //func getPath retrieves the filepath of a target from the fyne.URIReadCloser, allowing us to pull words from wordlists
 func getPath(reader fyne.URIReadCloser) string {
