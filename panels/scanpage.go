@@ -42,8 +42,7 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 		OnSubmit: func() {
 			pTargIP := pScanIPEntry.Text
 			pTargPorts := pScanPortEntry.Text
-			ports := tools.PortScan(pTargIP, pTargPorts)
-			fmt.Println(ports)
+			go tools.PortScan(pTargIP, pTargPorts)
 		},
 		SubmitText: "Scan",
 		OnCancel: func() {
@@ -217,8 +216,7 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 	bForceSelectionPanel := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), bForceSelectionLabel, bForceSelectionGrid)
 
 	//begin results box
-
-	resultsContent, err := ioutil.ReadFile("<ENTER TARGET DIR HERE>")
+	resultsContent, err := ioutil.ReadFile("PortscanResults.txt")
 	if err != nil {
 		log.Println(err)
 	}
@@ -232,8 +230,9 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 		resultsText.Wrapping = fyne.TextWrapBreak
 	}
 
+	//allow results tab to refresh, might be nice to have an auto-update but on demand seems fine
 	refreshButton := widget.NewButton("Refresh Results", func() {
-		resultsContent, err = ioutil.ReadFile("<ENTER TARGET DIR HERE>")
+		resultsContent, err = ioutil.ReadFile("PortscanResults.txt")
 		if err != nil {
 			log.Println(err)
 		}
@@ -242,8 +241,9 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 		resultsText.Refresh()
 	})
 
-	refreshButton.Resize(fyne.NewSize(120, 40))
-	refreshButton.Refresh()
+	clearButton := widget.NewButton("Clear Results", func() {
+		tools.ClearResults("PortscanResults.txt")
+	})
 
 	resultsScroll := widget.NewVScrollContainer(resultsText)
 	resSize := fyne.NewSize(1200, 220)
@@ -253,9 +253,11 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 	accord := widget.NewAccordionItem("Results", resultsScroll)
 	resultsRender := widget.NewAccordionContainer(accord)
 
-	buttonBar := fyne.NewContainerWithLayout(layout.NewHBoxLayout(), resultsRender, refreshButton)
+	buttonBar := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), refreshButton, clearButton)
 
-	resultsBox := fyne.NewContainerWithLayout(layout.NewAdaptiveGridLayout(1), buttonBar)
+	resultsBar := fyne.NewContainerWithLayout(layout.NewHBoxLayout(), resultsRender, buttonBar)
+
+	resultsBox := fyne.NewContainerWithLayout(layout.NewAdaptiveGridLayout(1), resultsBar)
 
 	//assemble top horizontal area (port scanner and dir scanner)
 	topH := fyne.NewContainerWithLayout(layout.NewAdaptiveGridLayout(2), hPScanBox, hDScanBox)
