@@ -4,7 +4,7 @@ Think a shitty armitage written in go and fyne. Will be real rough as we progres
 
 Current Goals:
 1. MAINTAIN DOCUMENTATION
-2. Basic GUI Port Scanner
+2. Basic GUI Port Scanner :heavy_check_mark:
 3. Basic GUI Web Enum
 4. Basic GUI Windows Exploitation (maybe eternalblue/other famous exploits to start)
 5. Basic GUI Windows Post Exploitation (deploy mimikatz, interact w/ powershell empire)
