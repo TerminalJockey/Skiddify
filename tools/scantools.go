@@ -12,12 +12,12 @@ import (
 )
 
 //PortScan scans ports lol
-func PortScan(IP string, PortRange string) {
+func PortScan(IP string, PortRange string, threads int) {
 	fmt.Println("scan started:", IP, PortRange)
 
 	ports := formatPorts(PortRange)
 
-	go pScan(ports, IP, PortRange)
+	go pScan(ports, IP, PortRange, threads)
 }
 
 func formatPorts(PortRange string) (portArray []string) {
@@ -59,7 +59,7 @@ func formatPorts(PortRange string) (portArray []string) {
 }
 
 //takes PortRange to show the requested scan in string format at output
-func pScan(ports []string, IP string, PortRange string) {
+func pScan(ports []string, IP string, PortRange string, threads int) {
 
 	if IP == "" {
 		IP = "localhost"
@@ -69,16 +69,25 @@ func pScan(ports []string, IP string, PortRange string) {
 
 	var openPorts []string
 
-	var sem = make(chan int, 20)
+	var sem = make(chan int, threads)
+	//sem channel acts as throttle, good spot for improvement
+	if threads == 0 {
+		sem = nil
+	}
+
+	//res recieves results from goroutine
 	res := make(chan string)
 
 	//AHAHAHA VICTORY
 	for _, port := range ports {
-		sem <- 1
+		//add throttle counter
+		if sem != nil {
+			sem <- 1
+		}
 		wg.Add(1)
 		defer wg.Done()
 		go scanPort(IP, port, res, &wg, sem)
-		<-sem
+
 	}
 
 	for range ports {
@@ -124,7 +133,11 @@ func pScan(ports []string, IP string, PortRange string) {
 
 func scanPort(IP string, port string, res chan string, wg *sync.WaitGroup, sem chan int) {
 	//get open ports
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(IP, port), time.Millisecond*500)
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(IP, port), time.Millisecond*300)
+	//release counter
+	if sem != nil {
+		<-sem
+	}
 	if err != nil {
 		log.Println(err)
 		res <- ""
@@ -132,7 +145,6 @@ func scanPort(IP string, port string, res chan string, wg *sync.WaitGroup, sem c
 		conn.Close()
 		res <- port
 	}
-
 }
 
 //ClearResults deletes a given file
