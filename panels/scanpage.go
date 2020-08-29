@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"io/ioutil"
 	"log"
+	"strconv"
 	"strings"
 
 	"fyne.io/fyne"
@@ -33,16 +34,20 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 	pScanIPEntry.SetPlaceHolder("Target IP")
 	pScanPortEntry := widget.NewEntry()
 	pScanPortEntry.SetPlaceHolder("Port Range")
+	pScanThreads := widget.NewEntry()
+	pScanThreads.SetPlaceHolder("Scan Threads")
 
 	//build portscan entry forms
 	pScanForm := &widget.Form{
 		Items: []*widget.FormItem{
 			{"Target IP: ", pScanIPEntry},
-			{"Port Range: ", pScanPortEntry}},
+			{"Port Range: ", pScanPortEntry},
+			{"Threads: ", pScanThreads}},
 		OnSubmit: func() {
 			pTargIP := pScanIPEntry.Text
 			pTargPorts := pScanPortEntry.Text
-			go tools.PortScan(pTargIP, pTargPorts)
+			pTargThreads, _ := strconv.Atoi(pScanThreads.Text)
+			go tools.PortScan(pTargIP, pTargPorts, pTargThreads)
 		},
 		SubmitText: "Scan",
 		OnCancel: func() {
