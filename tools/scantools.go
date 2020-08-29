@@ -61,6 +61,30 @@ func formatPorts(PortRange string) (portArray []string) {
 //takes PortRange to show the requested scan in string format at output
 func pScan(ports []string, IP string, PortRange string) {
 
+	if IP == "" {
+		IP = "localhost"
+	}
+
+	wg := sync.WaitGroup{}
+
+	var openPorts []string
+
+	var sem = make(chan int, 20)
+	res := make(chan string)
+
+	//AHAHAHA VICTORY
+	for _, port := range ports {
+		sem <- 1
+		wg.Add(1)
+		defer wg.Done()
+		go scanPort(IP, port, res, &wg, sem)
+		<-sem
+	}
+
+	for range ports {
+		openPorts = append(openPorts, <-res)
+	}
+
 	//open|create results file
 	resFile, err := os.OpenFile("PortscanResults.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	defer resFile.Close()
@@ -69,31 +93,6 @@ func pScan(ports []string, IP string, PortRange string) {
 		log.Println(err)
 	}
 
-	if IP == "" {
-		IP = "localhost"
-	}
-
-	wg := sync.WaitGroup{}
-	defer wg.Wait()
-
-	var openPorts []string
-
-	var sem = make(chan int, 20)
-
-	//DAMN YOU CONCURRENCY
-	for i := 0; i < len(ports); i++ {
-		sem <- 1
-		wg.Add(1)
-		port := ports[i]
-		go func(port string) {
-			<-sem
-			defer wg.Done()
-			openPort := scanPort(IP, port)
-			openPorts = append(openPorts, openPort)
-		}(port)
-	}
-
-	fmt.Println(openPorts)
 	var mu sync.Mutex
 	mu.Lock()
 	defer mu.Unlock()
@@ -105,10 +104,12 @@ func pScan(ports []string, IP string, PortRange string) {
 		log.Fatal(err)
 	}
 	for x := range openPorts {
-		result := fmt.Sprintf("Port: %s is open\n", openPorts[x])
-		if _, err := resFile.Write([]byte(result)); err != nil {
-			resFile.Close()
-			log.Fatal(err)
+		if openPorts[x] != "" {
+			result := fmt.Sprintf("Port: %s is open\n", openPorts[x])
+			if _, err := resFile.Write([]byte(result)); err != nil {
+				resFile.Close()
+				log.Fatal(err)
+			}
 		}
 	}
 
@@ -121,18 +122,17 @@ func pScan(ports []string, IP string, PortRange string) {
 
 }
 
-func scanPort(IP string, port string) (openPort string) {
+func scanPort(IP string, port string, res chan string, wg *sync.WaitGroup, sem chan int) {
 	//get open ports
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(IP, port), time.Millisecond*1000)
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(IP, port), time.Millisecond*500)
 	if err != nil {
 		log.Println(err)
+		res <- ""
 	} else {
-
-		openPort = port
 		conn.Close()
-		return openPort
+		res <- port
 	}
-	return openPort
+
 }
 
 //ClearResults deletes a given file
