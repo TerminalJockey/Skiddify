@@ -67,8 +67,12 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 	dScanIPEntry.SetPlaceHolder("Enter URL/IP")
 	dScanExtEntry := widget.NewEntry()
 	dScanExtEntry.SetPlaceHolder("Enter comma separated extensions")
+	dScanThreads := widget.NewEntry()
+	dScanThreads.SetPlaceHolder("Scan Threads")
 
 	//wordlist selection
+
+	var wPath string
 
 	wlButton := widget.NewButton("Select Wordlist", func() {
 		wfd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
@@ -79,7 +83,7 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 				dialog.ShowError(err, window)
 				return
 			}
-			wPath := getPath(reader)
+			wPath = getPath(reader)
 			fmt.Println(wPath)
 		}, window)
 		wfd.SetFilter(storage.NewExtensionFileFilter([]string{".txt"}))
@@ -90,11 +94,13 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 	dScanForm := &widget.Form{
 		Items: []*widget.FormItem{
 			{"Target IP/URL: ", dScanIPEntry},
-			{"Extensions: ", dScanExtEntry}},
+			{"Extensions: ", dScanExtEntry},
+			{"Threads: ", dScanThreads}},
 		OnSubmit: func() {
 			dScanTargIP := dScanIPEntry.Text
 			dScanExt := dScanExtEntry.Text
-			fmt.Println("dir scan started: ", dScanTargIP, dScanExt)
+			dThreads, _ := strconv.Atoi(dScanThreads.Text)
+			go tools.DirScan(dScanTargIP, dScanExt, dThreads, wPath)
 		},
 		SubmitText: "DirScan",
 		OnCancel: func() {
@@ -260,7 +266,7 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 
 	buttonBar := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), refreshButton, clearButton)
 
-	resultsBar := fyne.NewContainerWithLayout(layout.NewHBoxLayout(), resultsRender, buttonBar)
+	resultsBar := fyne.NewContainerWithLayout(layout.NewHBoxLayout(), resultsRender, layout.NewSpacer(), buttonBar)
 
 	resultsBox := fyne.NewContainerWithLayout(layout.NewAdaptiveGridLayout(1), resultsBar)
 
