@@ -1,9 +1,11 @@
 package tools
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -17,6 +19,7 @@ func PortScan(IP string, PortRange string, threads int) {
 
 	ports := formatPorts(PortRange)
 
+	IP = strings.TrimSpace(IP)
 	go pScan(ports, IP, PortRange, threads)
 }
 
@@ -126,9 +129,6 @@ func pScan(ports []string, IP string, PortRange string, threads int) {
 		resFile.Close()
 		log.Fatal(err)
 	}
-
-	fmt.Println("Done with pScan")
-
 }
 
 func scanPort(IP string, port string, res chan string, wg *sync.WaitGroup, sem chan int) {
@@ -155,9 +155,117 @@ func ClearResults(filename string) {
 	}
 }
 
+/* first we will verify the connection to the url. if good connection,
+read lines from wordlist file, append words to url, append extension to url
+and loop through combinations. return output to slice, write slice to results
+as with portscanner. Output should be response code, and url. lets try using
+structs this time.
+*/
+
+type urlDir struct {
+	url      string
+	response string
+}
+
 //DirScan scans dirs...
-func DirScan() {
-	fmt.Println("dirscan")
+func DirScan(IP string, extensions string, threads int, wordlist string) {
+	targ := strings.TrimSpace(IP)
+	extensions = strings.TrimSpace(extensions)
+	url := "http://" + targ
+	//test connection to url
+	testConn, err := http.Get(url)
+	if err != nil {
+		log.Println(err)
+	} else {
+		fmt.Println(testConn.Status)
+		go dScan(IP, extensions, threads, wordlist)
+	}
+}
+
+func dScan(IP string, extensions string, threads int, wordlist string) {
+	file, err := os.Open(wordlist)
+	if err != nil {
+		log.Println(err)
+	}
+	extArray := strings.Split(extensions, ",")
+
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+
+	dResults := make(chan urlDir)
+	dWG := sync.WaitGroup{}
+	dSem := make(chan int, threads)
+	if threads == 0 {
+		dSem = nil
+	}
+
+	wListLen := 0
+	for scanner.Scan() {
+		wListLen++
+		for _, ext := range extArray {
+			if dSem != nil {
+				dSem <- 1
+			}
+			url := "http://" + IP + "/" + scanner.Text() + "." + ext
+			fmt.Println(url)
+			dWG.Add(1)
+			defer dWG.Done()
+			go grabStatus(url, dResults, dSem)
+
+		}
+	}
+
+	var codes []urlDir
+	for x := 0; x < (wListLen * len(extArray)); x++ {
+		codes = append(codes, <-dResults)
+	}
+
+	resFile, err := os.OpenFile("PortscanResults.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	defer resFile.Close()
+
+	if err != nil {
+		log.Println(err)
+	}
+
+	var mu sync.Mutex
+	mu.Lock()
+	defer mu.Unlock()
+
+	//host format header:
+	header := fmt.Sprintf("Finished DirScan of host: %s extensions: %s \n\n\n", IP, extensions)
+	if _, err := resFile.Write([]byte(header)); err != nil {
+		resFile.Close()
+		log.Fatal(err)
+	}
+	for x := range codes {
+		if codes[x].response != "404 Not Found" {
+			result := fmt.Sprintf("%s %s \n", codes[x].response, codes[x].url)
+			if _, err := resFile.Write([]byte(result)); err != nil {
+				resFile.Close()
+				log.Fatal(err)
+			}
+		}
+	}
+
+	if _, err := resFile.Write([]byte("\n\n\n")); err != nil {
+		resFile.Close()
+		log.Fatal(err)
+	}
+}
+
+func grabStatus(url string, dResults chan urlDir, dSem chan int) {
+	var grabResult urlDir
+	grab, err := http.Get(url)
+	if dSem != nil {
+		<-dSem
+	}
+	if err != nil {
+		log.Println(err)
+	}
+	grabResult.response = grab.Status
+	grabResult.url = url
+	dResults <- grabResult
+
 }
 
 //BruteForce gon' do some bruteforcin'
