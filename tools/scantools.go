@@ -13,137 +13,258 @@ import (
 	"time"
 )
 
-//PortScan scans ports lol
-func PortScan(IP string, PortRange string, threads int) {
-	fmt.Println("scan started:", IP, PortRange)
-
-	ports := formatPorts(PortRange)
-
-	IP = strings.TrimSpace(IP)
-	go pScan(ports, IP, PortRange, threads)
+type pScanObject struct {
+	IP        string
+	Portrange string
+	Ports     []string
+	Threads   int
 }
 
-func formatPorts(PortRange string) (portArray []string) {
-
-	clearSpace := strings.ReplaceAll(PortRange, " ", "")
-	if strings.Contains(clearSpace, "-") == true || strings.Contains(clearSpace, ",") == true {
-		ports := strings.Split(PortRange, ",")
-		for i := 0; i < len(ports); i++ {
-			if strings.Contains(ports[i], "-") == true {
-				takSeparated := strings.Split(ports[i], "-")
-				val0, err := strconv.Atoi(takSeparated[0])
-				if err != nil {
-					log.Println(err)
-				}
-				val1, err := strconv.Atoi(takSeparated[1])
-				if err != nil {
-					log.Println(err)
-				}
-
-				if val0 > val1 {
-					diff := val0 - val1
-					for x := 0; x < diff+1; x++ {
-						appendVal := strconv.Itoa(val1 + x)
-						portArray = append(portArray, appendVal)
-					}
-				} else if val1 > val0 {
-					diff := val1 - val0
-					for x := 0; x < diff+1; x++ {
-						appendVal := strconv.Itoa(val0 + x)
-						portArray = append(portArray, appendVal)
-					}
-				}
-			}
-		}
-	} else {
-		portArray = append(portArray, PortRange)
-	}
-	return portArray
+type pScanResult struct {
+	IP     string
+	Port   string
+	State  string
+	Banner string
 }
 
-//takes PortRange to show the requested scan in string format at output
-func pScan(ports []string, IP string, PortRange string, threads int) {
+type dScanObject struct {
+	Host       string
+	extensions string
+	extArray   []string
+	wordlist   string
+	directory  string
+	url        string
+	threads    int
+	waitTime   int
+	IsTLS      bool
+}
+
+type dScanResult struct {
+	Host       string
+	statusCode string
+	directory  string
+}
+
+func InitPortScan(IP string, Portrange string, Threads int) {
 
 	if IP == "" {
 		IP = "localhost"
 	}
 
-	wg := sync.WaitGroup{}
+	var scanObject pScanObject
+	var scanResult pScanResult
+	var resultChannel = make(chan pScanResult)
 
-	var openPorts []string
+	scanObject.IP = strings.TrimSpace(IP)
+	scanObject.Portrange = Portrange
+	scanObject.Ports = getPorts(strings.TrimSpace(Portrange))
+	scanObject.Threads = Threads
+	var sem = make(chan int)
+	var wg sync.WaitGroup
 
-	var sem = make(chan int, threads)
-	//sem channel acts as throttle, good spot for improvement
-	if threads == 0 {
-		sem = nil
-	}
+	sem = semSetup(Threads)
 
-	//res recieves results from goroutine
-	res := make(chan string)
-
-	//AHAHAHA VICTORY
-	for _, port := range ports {
-		//add throttle counter
+	for _, port := range scanObject.Ports {
 		if sem != nil {
 			sem <- 1
 		}
 		wg.Add(1)
 		defer wg.Done()
-		go scanPort(IP, port, res, &wg, sem)
-
+		go portScan(scanObject, port, scanResult, sem, &wg, resultChannel)
 	}
 
-	for range ports {
-		openPorts = append(openPorts, <-res)
+	fmt.Println("passed goroutine")
+
+	var scanArray []pScanResult
+	for range scanObject.Ports {
+		scanArray = append(scanArray, <-resultChannel)
 	}
 
-	//open|create results file
-	resFile, err := os.OpenFile("PortscanResults.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	defer resFile.Close()
-
-	if err != nil {
-		log.Println(err)
-	}
-
-	var mu sync.Mutex
-	mu.Lock()
-	defer mu.Unlock()
-
-	//host format header:
-	header := fmt.Sprintf("Finished scan of host: %s ports: %s \n\n\n", IP, PortRange)
-	if _, err := resFile.Write([]byte(header)); err != nil {
-		resFile.Close()
-		log.Fatal(err)
-	}
-	for x := range openPorts {
-		if openPorts[x] != "" {
-			result := fmt.Sprintf("Port: %s is open\n", openPorts[x])
-			if _, err := resFile.Write([]byte(result)); err != nil {
-				resFile.Close()
-				log.Fatal(err)
-			}
-		}
-	}
-
-	if _, err := resFile.Write([]byte("\n\n\n")); err != nil {
-		resFile.Close()
-		log.Fatal(err)
+	if len(scanArray) > 0 {
+		writeResult(scanArray)
 	}
 }
 
-func scanPort(IP string, port string, res chan string, wg *sync.WaitGroup, sem chan int) {
-	//get open ports
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(IP, port), time.Millisecond*300)
-	//release counter
+func portScan(scanObject pScanObject, port string, scanResult pScanResult, sem chan int, wg *sync.WaitGroup, resultChannel chan pScanResult) {
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(scanObject.IP, port), time.Millisecond*300)
 	if sem != nil {
 		<-sem
 	}
 	if err != nil {
-		log.Println(err)
-		res <- ""
+		scanResult.IP = scanObject.IP
+		scanResult.Port = port
+		scanResult.State = "closed"
+		resultChannel <- scanResult
 	} else {
 		conn.Close()
-		res <- port
+		scanResult.IP = scanObject.IP
+		scanResult.Port = port
+		scanResult.State = "open"
+		resultChannel <- scanResult
+	}
+
+}
+
+func getPorts(Portrange string) (portArray []string) {
+	if strings.Contains(Portrange, "-") == true || strings.Contains(Portrange, ",") == true {
+		ports := strings.Split(Portrange, ",")
+		for i := 0; i < len(ports); i++ {
+			if strings.Contains(ports[i], "-") == true {
+				takSeparated := strings.Split(ports[i], "-")
+				val0, err := strconv.Atoi(takSeparated[0])
+				handleError(err)
+				val1, err := strconv.Atoi(takSeparated[1])
+				handleError(err)
+				if val0 > val1 {
+					for x := 0; x < ((val0 - val1) + 1); x++ {
+						portArray = append(portArray, strconv.Itoa(val1+x))
+					}
+				} else if val1 > val0 {
+					for x := 0; x < ((val1 - val0) + 1); x++ {
+						portArray = append(portArray, strconv.Itoa(val0+x))
+					}
+				}
+			}
+		}
+	} else {
+		portArray = append(portArray, Portrange)
+	}
+	return portArray
+}
+
+func InitDirScan(IP string, extensions string, threads int, wordlist string) {
+	var scanObject dScanObject
+	var scanResult dScanResult
+	var resultChannel = make(chan dScanResult)
+	var counter int
+	var sem = make(chan int)
+	var wg sync.WaitGroup
+
+	scanObject.Host = strings.TrimSpace(IP)
+	scanObject.threads = threads
+	scanObject.wordlist = wordlist
+	scanObject.IsTLS = checkTLS(scanObject.Host)
+	scanObject.extensions = strings.TrimSpace(extensions)
+
+	if extensions != "" {
+		scanObject.extArray = strings.Split(scanObject.extensions, ",")
+	} else {
+		scanObject.extArray = nil
+	}
+
+	sem = semSetup(threads)
+
+	file, err := os.Open(scanObject.wordlist)
+	if err != nil {
+		log.Println(err)
+	}
+	defer file.Close()
+
+	if scanObject.extArray != nil {
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			counter++
+			for _, ext := range scanObject.extArray {
+				if sem != nil {
+					sem <- 1
+				}
+				if scanObject.IsTLS == true {
+					scanObject.url = "https://" + scanObject.Host + "/" + scanner.Text() + "." + ext
+					wg.Add(1)
+					defer wg.Done()
+					go scanDir(scanObject, scanResult, sem, &wg, resultChannel)
+				} else {
+					scanObject.url = "http://" + scanObject.Host + "/" + scanner.Text() + "." + ext
+					wg.Add(1)
+					defer wg.Done()
+					go scanDir(scanObject, scanResult, sem, &wg, resultChannel)
+				}
+			}
+		}
+	} else {
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			counter++
+			if sem != nil {
+				sem <- 1
+			}
+			if scanObject.IsTLS == true {
+				scanObject.url = "https://" + scanObject.Host + "/" + scanner.Text()
+				wg.Add(1)
+				defer wg.Done()
+				go scanDir(scanObject, scanResult, sem, &wg, resultChannel)
+			} else {
+				scanObject.url = "http://" + scanObject.Host + "/" + scanner.Text()
+				wg.Add(1)
+				defer wg.Done()
+				go scanDir(scanObject, scanResult, sem, &wg, resultChannel)
+			}
+		}
+	}
+	var scanArray []dScanResult
+	if counter == 0 {
+		counter = 1
+	}
+
+	for x := 0; x < (counter * len(scanObject.extArray)); x++ {
+		scanArray = append(scanArray, <-resultChannel)
+	}
+	if len(scanArray) > 0 {
+		writeResult(scanArray)
+	}
+
+}
+
+func scanDir(scanObject dScanObject, scanResult dScanResult, sem chan int, wg *sync.WaitGroup, resultChannel chan dScanResult) {
+	client := http.Client{Timeout: 5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}}
+	get, err1 := http.NewRequest("GET", scanObject.url, nil)
+	get.Close = true
+	resp, err2 := client.Do(get)
+	if sem != nil {
+		<-sem
+	}
+	handleError(err1)
+	handleError(err2)
+	if err1 == nil && err2 == nil {
+		scanResult.directory = scanObject.url
+		scanResult.statusCode = resp.Status
+		scanResult.Host = scanObject.Host
+		resultChannel <- scanResult
+	} else {
+		scanResult.directory = scanObject.directory
+		scanResult.statusCode = "err"
+		scanResult.Host = "err"
+		resultChannel <- scanResult
+	}
+}
+
+func checkTLS(IP string) bool {
+	_, err := http.Get(IP)
+	if err != nil {
+		if strings.HasSuffix(err.Error(), "x509: certificate signed by unknown authority") == true {
+			return true
+		}
+	}
+	return false
+}
+
+func semSetup(Threads int) (sem chan int) {
+	if Threads == 0 {
+		sem = make(chan int)
+		sem = nil
+		return sem
+	}
+	sem = make(chan int, Threads)
+	return sem
+
+}
+
+func handleError(err error) {
+	if err != nil {
+		log.Println(err)
 	}
 }
 
@@ -155,120 +276,47 @@ func ClearResults(filename string) {
 	}
 }
 
-/* first we will verify the connection to the url. if good connection,
-read lines from wordlist file, append words to url, append extension to url
-and loop through combinations. return output to slice, write slice to results
-as with portscanner. Output should be response code, and url. lets try using
-structs this time.
-*/
+func writeResult(x interface{}) {
 
-type urlDir struct {
-	url      string
-	response string
-}
+	resultFile, err := os.OpenFile("ScanResults.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	defer resultFile.Close()
+	handleError(err)
 
-//DirScan scans dirs...
-func DirScan(IP string, extensions string, threads int, wordlist string) {
-	targ := strings.TrimSpace(IP)
-	extensions = strings.TrimSpace(extensions)
-	url := "http://" + targ
-	//test connection to url
-	testConn, err := http.Get(url)
-	if err != nil {
-		log.Println(err)
-	} else {
-		fmt.Println(testConn.Status)
-		go dScan(IP, extensions, threads, wordlist)
-	}
-}
-
-func dScan(IP string, extensions string, threads int, wordlist string) {
-	file, err := os.Open(wordlist)
-	if err != nil {
-		log.Println(err)
-	}
-	extArray := strings.Split(extensions, ",")
-
-	defer file.Close()
-	scanner := bufio.NewScanner(file)
-
-	dResults := make(chan urlDir)
-	dWG := sync.WaitGroup{}
-	dSem := make(chan int, threads)
-	if threads == 0 {
-		dSem = nil
-	}
-
-	wListLen := 0
-	for scanner.Scan() {
-		wListLen++
-		for _, ext := range extArray {
-			if dSem != nil {
-				dSem <- 1
-			}
-			url := "http://" + IP + "/" + scanner.Text() + "." + ext
-			fmt.Println(url)
-			dWG.Add(1)
-			defer dWG.Done()
-			go grabStatus(url, dResults, dSem)
-
+	switch y := x.(type) {
+	case []pScanResult:
+		header := fmt.Sprintf("Finished Portscan \n\n\n")
+		if _, err := resultFile.Write([]byte(header)); err != nil {
+			resultFile.Close()
+			log.Fatal(err)
 		}
-	}
-
-	var codes []urlDir
-	for x := 0; x < (wListLen * len(extArray)); x++ {
-		codes = append(codes, <-dResults)
-	}
-
-	resFile, err := os.OpenFile("PortscanResults.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	defer resFile.Close()
-
-	if err != nil {
-		log.Println(err)
-	}
-
-	var mu sync.Mutex
-	mu.Lock()
-	defer mu.Unlock()
-
-	//host format header:
-	header := fmt.Sprintf("Finished DirScan of host: %s extensions: %s \n\n\n", IP, extensions)
-	if _, err := resFile.Write([]byte(header)); err != nil {
-		resFile.Close()
-		log.Fatal(err)
-	}
-	for x := range codes {
-		if codes[x].response != "404 Not Found" {
-			result := fmt.Sprintf("%s %s \n", codes[x].response, codes[x].url)
-			if _, err := resFile.Write([]byte(result)); err != nil {
-				resFile.Close()
-				log.Fatal(err)
+		for z := range y {
+			if y[z].Port != "" {
+				write := fmt.Sprintf("%s:%s is %s\n", y[z].IP, y[z].Port, y[z].State)
+				if _, err := resultFile.Write([]byte(write)); err != nil {
+					resultFile.Close()
+					log.Fatalln(err)
+				}
+			}
+		}
+	case []dScanResult:
+		header := fmt.Sprintf("Finished DirScan of host: %s \n\n\n", y[1].Host)
+		if _, err := resultFile.Write([]byte(header)); err != nil {
+			resultFile.Close()
+			log.Fatal(err)
+		}
+		for v := range y {
+			fmt.Println(y[v].directory)
+			if y[v].statusCode != "404 Not Found" && y[v].statusCode != "err" {
+				write := fmt.Sprintf("%s %s \n", y[v].directory, y[v].statusCode)
+				if _, err := resultFile.Write([]byte(write)); err != nil {
+					resultFile.Close()
+					log.Fatal(err)
+				}
 			}
 		}
 	}
-
-	if _, err := resFile.Write([]byte("\n\n\n")); err != nil {
-		resFile.Close()
+	if _, err := resultFile.Write([]byte("\n\n")); err != nil {
+		resultFile.Close()
 		log.Fatal(err)
 	}
-}
-
-func grabStatus(url string, dResults chan urlDir, dSem chan int) {
-	var grabResult urlDir
-	grab, err := http.Get(url)
-	if dSem != nil {
-		<-dSem
-	}
-	if err != nil {
-		log.Println(err)
-	}
-	grabResult.response = grab.Status
-	grabResult.url = url
-	dResults <- grabResult
-
-}
-
-//BruteForce gon' do some bruteforcin'
-func BruteForce() {
-	fmt.Println("bruteforce")
 }
