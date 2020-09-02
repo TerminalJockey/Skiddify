@@ -4,7 +4,7 @@ import (
 	"fyne.io/fyne"
 	"fyne.io/fyne/app"
 	"fyne.io/fyne/widget"
-	"github.com/TerminalJockey/Skiddify/0.2/panels"
+	"github.com/TerminalJockey/Skiddify/0.3/panels"
 )
 
 func main() {
