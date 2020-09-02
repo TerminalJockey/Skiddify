@@ -15,7 +15,7 @@ import (
 	"fyne.io/fyne/storage"
 	"fyne.io/fyne/widget"
 
-	"github.com/TerminalJockey/Skiddify/0.2/tools"
+	"github.com/TerminalJockey/Skiddify/0.3/tools"
 )
 
 //Scan returns the scan window back to main app
@@ -47,7 +47,7 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 			pTargIP := pScanIPEntry.Text
 			pTargPorts := pScanPortEntry.Text
 			pTargThreads, _ := strconv.Atoi(pScanThreads.Text)
-			go tools.PortScan(pTargIP, pTargPorts, pTargThreads)
+			go tools.InitPortScan(pTargIP, pTargPorts, pTargThreads)
 		},
 		SubmitText: "Scan",
 		OnCancel: func() {
@@ -100,7 +100,7 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 			dScanTargIP := dScanIPEntry.Text
 			dScanExt := dScanExtEntry.Text
 			dThreads, _ := strconv.Atoi(dScanThreads.Text)
-			go tools.DirScan(dScanTargIP, dScanExt, dThreads, wPath)
+			go tools.InitDirScan(dScanTargIP, dScanExt, dThreads, wPath)
 		},
 		SubmitText: "DirScan",
 		OnCancel: func() {
@@ -227,7 +227,7 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 	bForceSelectionPanel := fyne.NewContainerWithLayout(layout.NewVBoxLayout(), bForceSelectionLabel, bForceSelectionGrid)
 
 	//begin results box
-	resultsContent, err := ioutil.ReadFile("PortscanResults.txt")
+	resultsContent, err := ioutil.ReadFile("ScanResults.txt")
 	if err != nil {
 		log.Println(err)
 	}
@@ -243,7 +243,7 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 
 	//allow results tab to refresh, might be nice to have an auto-update but on demand seems fine
 	refreshButton := widget.NewButton("Refresh Results", func() {
-		resultsContent, err = ioutil.ReadFile("PortscanResults.txt")
+		resultsContent, err = ioutil.ReadFile("ScanResults.txt")
 		if err != nil {
 			log.Println(err)
 		}
@@ -253,7 +253,7 @@ func Scan(window fyne.Window) fyne.CanvasObject {
 	})
 
 	clearButton := widget.NewButton("Clear Results", func() {
-		tools.ClearResults("PortscanResults.txt")
+		tools.ClearResults("ScanResults.txt")
 	})
 
 	resultsScroll := widget.NewVScrollContainer(resultsText)
